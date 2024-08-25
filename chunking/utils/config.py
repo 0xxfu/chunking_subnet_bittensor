@@ -87,12 +87,12 @@ def add_args(cls, parser):
         help="The default epoch length (how often we set weights, measured in 12 second blocks).",
         default=100,
     )
-    
+
     parser.add_argument(
         "--neuron.sync_metagraph_interval",
         type=int,
         help="The interval between metagraph syncs in blocks.",
-        default=50
+        default=50,
     )
 
     parser.add_argument(
@@ -109,7 +109,7 @@ def add_args(cls, parser):
         default=False,
     )
 
-    if neuron_type == "validator":        
+    if neuron_type == "validator":
 
         parser.add_argument(
             "--neuron.timeout",
@@ -124,12 +124,12 @@ def add_args(cls, parser):
             help="The number of concurrent forwards running at any time.",
             default=1,
         )
-        
+
         parser.add_argument(
             "--wandb.project_name",
             type=str,
             help="The name of the wandb project.",
-            default=chunking.PROJECT_NAME
+            default=chunking.PROJECT_NAME,
         )
 
         parser.add_argument(
@@ -143,14 +143,14 @@ def add_args(cls, parser):
             "--neuron.set_weights_timeout_seconds",
             type=int,
             help="The timeout for set_weights extrinsic call in seconds.",
-            default=180, # 3 minutes
+            default=180,  # 3 minutes
         )
-        
+
         parser.add_argument(
             "--neuron.synthetic_query_interval_seconds",
             type=int,
             help="The interval between synthetic queries in seconds.",
-            default=20
+            default=20,
         )
 
         parser.add_argument(
@@ -197,7 +197,7 @@ def add_args(cls, parser):
             default=False,
         )
 
-    #Miner
+    # Miner
     else:
         parser.add_argument(
             "--blacklist.force_validator_permit",
@@ -225,7 +225,14 @@ def add_args(cls, parser):
             action="store_true",
             help="If set, miners will accept queries without verifying. (Dangerous!)",
             default=False,
-        )            
+        )
+
+        parser.add_argument(
+            "--miner.name",
+            type=str,
+            help="The name of the miner to load, e.g. openai, punkt, etc.",
+            default="punkt",
+        )
 
 
 def config(cls):

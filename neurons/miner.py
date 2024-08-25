@@ -21,7 +21,7 @@ import time
 from typing import List, Tuple
 
 import bittensor as bt
-
+import importlib
 import chunking
 from chunking.base.miner import BaseMinerNeuron
 
@@ -32,23 +32,22 @@ import json
 from sr25519 import sign
 
 
-def download_nltk_data(package_name):
-    try:
-        # Try to find the package
-        find(f"tokenizers/{package_name}")
-        bt.logging.debug(f"{package_name} already exists. No need to download.")
-    except LookupError:
-        # If the package doesn't exist, download it
-        bt.logging.debug(f"{package_name} not found. Downloading...")
-        nltk.download(package_name, quiet=True)
-        bt.logging.debug(f"{package_name} download completed.")
-
-
 class Miner(BaseMinerNeuron):
 
     def __init__(self):
         super(Miner, self).__init__()
-        download_nltk_data("punkt")
+
+        config = self.config
+        if hasattr(config, "miner") and hasattr(config.miner, "name"):
+            miner_name = f"chunking.miners.{config.miner.name}_miner"
+        else:
+            miner_name = f"chunking.miners.punkt_miner"
+        miner_module = importlib.import_module(miner_name)
+
+        self.miner_init = miner_module.miner_init
+        self.miner_process = miner_module.miner_process
+
+        self.miner_init(self)
 
     async def forward(
         self, synapse: chunking.protocol.chunkSynapse
@@ -63,41 +62,12 @@ class Miner(BaseMinerNeuron):
             chunking.protocol.chunkSynapse: The synapse object with the 'chunks' field set to the generated chunks.
 
         """
-        # default miner logic, see docs/miner_guide.md for help writing your own miner logic
 
-        bt.logging.debug(f"from hotkey {synapse.dendrite.hotkey[:10]}: Received chunk_size: {synapse.chunk_size}, time_soft_max: {synapse.time_soft_max}")
+        bt.logging.debug(
+            f"Chunk size: {synapse.chunk_size} Chunk qty: {synapse.chunk_qty} Time out: {synapse.time_soft_max}"
+        )
 
-        document = sent_tokenize(synapse.document)
-        bt.logging.debug(f"From hotkey {synapse.dendrite.hotkey[:10]}: Received query: \"{document[0]} ...\"")
-
-        chunks = []
-        while len(document) > 0:
-            chunks.append(document[0])
-            del document[0]
-            while len(document) > 0:
-                if len(chunks[-1] + " " + document[0]) > synapse.chunk_size:
-                    break
-                chunks[-1] += " " + document.pop(0)
-
-        bt.logging.debug(f"Created {len(chunks)} chunks")
-
-        synapse.chunks = chunks
-
-        response_data = {
-            "document": synapse.document,
-            "chunk_size": synapse.chunk_size,
-            "chunk_qty": synapse.chunk_qty,
-            "chunks": synapse.chunks,
-        }
-
-        synapse.miner_signature = sign(
-            (self.wallet.get_hotkey().public_key, self.wallet.get_hotkey().private_key),
-            str.encode(json.dumps(response_data)),
-        ).hex()
-
-        bt.logging.debug(f"signed synapse with signature: {synapse.miner_signature}")
-
-        return synapse
+        return self.miner_process(self, synapse)
 
     async def blacklist(
         self, synapse: chunking.protocol.chunkSynapse

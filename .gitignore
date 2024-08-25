@@ -19,3 +19,4 @@ wandb/
 scripts/
 note.md
 .venv/
+.idea/

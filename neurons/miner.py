@@ -25,15 +25,30 @@ import bittensor as bt
 import chunking
 from chunking.base.miner import BaseMinerNeuron
 
+import nltk
+from nltk.data import find
 from nltk.tokenize import sent_tokenize
 import json
 from sr25519 import sign
+
+
+def download_nltk_data(package_name):
+    try:
+        # Try to find the package
+        find(f"tokenizers/{package_name}")
+        bt.logging.debug(f"{package_name} already exists. No need to download.")
+    except LookupError:
+        # If the package doesn't exist, download it
+        bt.logging.debug(f"{package_name} not found. Downloading...")
+        nltk.download(package_name, quiet=True)
+        bt.logging.debug(f"{package_name} download completed.")
 
 
 class Miner(BaseMinerNeuron):
 
     def __init__(self):
         super(Miner, self).__init__()
+        download_nltk_data("punkt")
 
     async def forward(
         self, synapse: chunking.protocol.chunkSynapse
@@ -54,35 +69,34 @@ class Miner(BaseMinerNeuron):
 
         document = sent_tokenize(synapse.document)
         bt.logging.debug(f"From hotkey {synapse.dendrite.hotkey[:10]}: Received query: \"{document[0]} ...\"")
-        
-        
-        chunks = []       
+
+        chunks = []
         while len(document) > 0:
             chunks.append(document[0])
             del document[0]
             while len(document) > 0:
                 if len(chunks[-1] + " " + document[0]) > synapse.chunk_size:
                     break
-                chunks[-1] += (" " + document.pop(0))
+                chunks[-1] += " " + document.pop(0)
 
         bt.logging.debug(f"Created {len(chunks)} chunks")
 
         synapse.chunks = chunks
 
         response_data = {
-            'document': synapse.document,
-            'chunk_size': synapse.chunk_size,
-            'chunk_qty': synapse.chunk_qty,
-            'chunks': synapse.chunks,
+            "document": synapse.document,
+            "chunk_size": synapse.chunk_size,
+            "chunk_qty": synapse.chunk_qty,
+            "chunks": synapse.chunks,
         }
-                
+
         synapse.miner_signature = sign(
             (self.wallet.get_hotkey().public_key, self.wallet.get_hotkey().private_key),
-            str.encode(json.dumps(response_data))
+            str.encode(json.dumps(response_data)),
         ).hex()
-        
+
         bt.logging.debug(f"signed synapse with signature: {synapse.miner_signature}")
-        
+
         return synapse
 
     async def blacklist(
@@ -119,39 +133,49 @@ class Miner(BaseMinerNeuron):
         """
         uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
         if (
-            not synapse.dendrite.hotkey or
-            not synapse.dendrite.hotkey in self.metagraph.hotkeys
+            not synapse.dendrite.hotkey
+            or not synapse.dendrite.hotkey in self.metagraph.hotkeys
         ):
             if self.config.blacklist.allow_non_registered:
-                bt.logging.warning(f"Accepting request from un-registered hotkey {synapse.dendrite.hotkey}")
+                bt.logging.warning(
+                    f"Accepting request from un-registered hotkey {synapse.dendrite.hotkey}"
+                )
                 return False, "Allowing un-registered hotkey"
             else:
                 # Ignore requests from un-registered entities.
-                bt.logging.warning(f"Blacklisting un-registered hotkey {synapse.dendrite.hotkey}")
+                bt.logging.warning(
+                    f"Blacklisting un-registered hotkey {synapse.dendrite.hotkey}"
+                )
                 return True, "Unrecognized hotkey"
 
         if not self.metagraph.validator_permit[uid]:
             if self.config.blacklist.force_validator_permit:
                 # Ignore request from non-validator
-                bt.logging.warning(f"Blacklisting a request from non-validator hotkey {synapse.dendrite.hotkey}")
+                bt.logging.warning(
+                    f"Blacklisting a request from non-validator hotkey {synapse.dendrite.hotkey}"
+                )
                 return True, "Non-validator hotkey"
             else:
-                bt.logging.warning(f"Accepting request from non-validator hotkey {synapse.dendrite.hotkey}")
+                bt.logging.warning(
+                    f"Accepting request from non-validator hotkey {synapse.dendrite.hotkey}"
+                )
                 return False, "Validator permit not required"
-            
+
         stake = self.metagraph.S[uid].item()
-        
+
         if stake < self.config.blacklist.minimum_stake:
             # Ignore request from entity with insufficient stake.
-            bt.logging.warning(f"Blacklisting request from hotkey {synapse.dendrite.hotkey} with insufficient stake: {stake}")
+            bt.logging.warning(
+                f"Blacklisting request from hotkey {synapse.dendrite.hotkey} with insufficient stake: {stake}"
+            )
             return True, "Insufficient stake"
 
-        bt.logging.debug(f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}")
+        bt.logging.debug(
+            f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}"
+        )
         return False, "Hotkey recognized!"
 
-    async def priority(
-        self, synapse: chunking.protocol.chunkSynapse
-    ) -> float:
+    async def priority(self, synapse: chunking.protocol.chunkSynapse) -> float:
         """
         The priority function determines the order in which requests are handled. More valuable or higher-priority
         requests are processed before others. You should design your own priority mechanism with care.
@@ -171,15 +195,20 @@ class Miner(BaseMinerNeuron):
         Example priority logic:
         - A higher stake results in a higher priority value.
         """
-        caller_uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)  # Get the caller index.
-        priority = float(self.metagraph.S[caller_uid])  # Return the stake as the priority.
-        bt.logging.debug(f"Prioritizing {synapse.dendrite.hotkey} with value: ", priority)
+        caller_uid = self.metagraph.hotkeys.index(
+            synapse.dendrite.hotkey
+        )  # Get the caller index.
+        priority = float(
+            self.metagraph.S[caller_uid]
+        )  # Return the stake as the priority.
+        bt.logging.debug(
+            f"Prioritizing {synapse.dendrite.hotkey} with value: ", priority
+        )
         return priority
 
-    async def verify(
-        self, synapse: chunking.protocol.chunkSynapse
-    ) -> None:
+    async def verify(self, synapse: chunking.protocol.chunkSynapse) -> None:
         print("not verifying")
+
 
 # This is the main function, which runs the miner.
 if __name__ == "__main__":

@@ -17,3 +17,5 @@ start.sh
 wandb/
 *.json
 scripts/
+note.md
+.venv/
